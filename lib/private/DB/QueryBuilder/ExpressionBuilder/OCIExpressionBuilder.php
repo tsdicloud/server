@@ -163,16 +163,16 @@ class OCIExpressionBuilder extends ExpressionBuilder {
 	 *
 	 * @param string $column
 	 * @param mixed $type One of IQueryBuilder::PARAM_*
-	 * @return IQueryFunction
+	 * @return string
 	 */
-	public function castColumn(string $column, $type): IQueryFunction {
+	public function castColumn(string $column, $type): string {
 		if ($type === IQueryBuilder::PARAM_STR) {
 			$column = $this->helper->quoteColumnName($column);
-			return new QueryFunction('to_char(' . $column . ')');
+			return (string)(new QueryFunction('to_char(' . $column . ')'));
 		}
 		if ($type === IQueryBuilder::PARAM_INT) {
 			$column = $this->helper->quoteColumnName($column);
-			return new QueryFunction('to_number(to_char(' . $column . '))');
+			return (string)(new QueryFunction('to_number(to_char(' . $column . '))'));
 		}
 
 		return parent::castColumn($column, $type);
