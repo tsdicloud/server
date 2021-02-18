@@ -418,8 +418,8 @@ class ExpressionBuilder implements IExpressionBuilder {
 	 *
 	 * @return ILiteral
 	 */
-	public function literal($input, $type = null): string {
-		return (string)(new Literal($this->expressionBuilder->literal($input, $type)));
+	public function literal($input, $type = null): ILiteral {
+		return new Literal($this->expressionBuilder->literal($input, $type));
 	}
 
 	/**

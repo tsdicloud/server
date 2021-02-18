@@ -352,10 +352,10 @@ interface IExpressionBuilder {
 	 * @param mixed $input The parameter to be quoted.
 	 * @param mixed|null $type One of the IQueryBuilder::PARAM_* constants
 	 *
-	 * @return string
+	 * @return ILiteral
 	 * @since 8.2.0
 	 */
-	public function literal($input, $type = null): string;
+	public function literal($input, $type = null): ILiteral;
 
 	/**
 	 * Returns a IQueryFunction that casts the column to the given type
