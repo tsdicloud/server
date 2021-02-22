@@ -349,6 +349,31 @@ class Definitions {
 				],
 			],
 		],
+		'forms-form' => [
+			'author' => 'Nextcloud',
+			'app' => 'forms',
+			'since' => '19.0.10',
+			'parameters' => [
+				'id' => [
+					'since' => '19.0.10',
+					'required' => true,
+					'description' => 'The form-hash of the form',
+					'example' => 'q72GGqbfbLBC6xNB',
+				],
+				'name' => [
+					'since' => '19.0.10',
+					'required' => true,
+					'description' => 'The title of the form',
+					'example' => 'Nice Form',
+				],
+				'link' => [
+					'since' => '19.0.10',
+					'required' => true,
+					'description' => 'The full URL to the board',
+					'example' => 'http://localhost/index.php/apps/forms/q72GGqbfbLBC6xNB',
+				],
+			],
+		],
 		'guest' => [
 			'author' => 'Nextcloud',
 			'app' => 'spreed',
