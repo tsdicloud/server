@@ -138,7 +138,7 @@ trait S3ObjectTrait
 
 			// This is an empty file so just touch it then
 			if ($count === 0 && feof($countStream)) {
-				$uploader = new ObjectUploader($this->getConnection(), $this->bucket, $urn, '');
+                $uploader = new ObjectUploader($this->getConnection(), $this->bucket, $urn, '', 'private', $s3params);
 				$uploader->upload();
 			} else {
 				throw $e;
