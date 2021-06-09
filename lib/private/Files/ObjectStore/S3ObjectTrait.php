@@ -136,7 +136,13 @@ trait S3ObjectTrait
             // slow down s3 bucket with fragment management
             $this->getConnection()->abortMultipartUpload($uploader->getState()->getId());
 
-			// This is an empty file so just touch it then
+            // This is an empty file so just touch it then
+            $s3params = [
+                'part_size' => $this->uploadPartSize,
+                'params' => [
+                    'ContentType' => $mimetype
+                ] + $this->getSseKmsPutParameters(),
+            ];
 			if ($count === 0 && feof($countStream)) {
                 $uploader = new ObjectUploader($this->getConnection(), $this->bucket, $urn, '', 'private', $s3params);
 				$uploader->upload();
