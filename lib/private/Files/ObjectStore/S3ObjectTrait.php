@@ -134,7 +134,10 @@ trait S3ObjectTrait
         } catch (S3MultipartUploadException $e) {
             // if anything goes wrong with multipart, make sure that you don´t poison and 
             // slow down s3 bucket with fragment management
-            $this->getConnection()->abortMultipartUpload($uploader->getState()->getId());
+            $uploadInfo = $uploader->getState()->getId();
+            if ($uploader->getState()->isInitiated() && (array_key_exists('UploadId', $uploadInfo))) {
+                $this->getConnection()->abortMultipartUpload($uploadInfo);
+            }
 
             // This is an empty file so just touch it then
             $s3params = [
