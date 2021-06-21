@@ -28,8 +28,9 @@ use Aws\S3\Exception\S3MultipartUploadException;
 use Aws\S3\MultipartUploader;
 use Aws\S3\ObjectUploader;
 use Aws\S3\S3Client;
-use GuzzleHttp\Psr7\CachingStream;
-use Icewind\Streams\CallbackWrapper;
+
+use GuzzleHttp\Psr7;
+
 use OC\Files\Stream\SeekableHttpStream;
 
 trait S3ObjectTrait
@@ -88,6 +89,59 @@ trait S3ObjectTrait
     }
 
     /**
+     * Single object put helper
+     * @param string $urn the unified resource name used to identify the object
+     * @param resource $stream stream with the data to write
+     * @param string|null $mimetype the mimetype to set for the remove object @since 22.0.0
+     * @throws \Exception when something goes wrong, message will be logged
+     * @since 7.0.0
+     */
+    protected function writeSingle($urn, $stream, string $mimetype = null) {
+        $this->getConnection()->putObject([
+            'Bucket' => $this->bucket,
+            'Key'    => $urn,
+            'Body'   => $stream,
+            'ACL'    => 'private',
+            'params' => [
+                'ContentType' => $mimetype
+            ] + $this->getSseKmsPutParameters(), 
+        ]);
+    }
+
+
+    /**
+     * Multipart upload helper that tries to avoid orphaned fragments in S3
+     * @param string $urn the unified resource name used to identify the object
+     * @param resource $stream stream with the data to write
+     * @param string|null $mimetype the mimetype to set for the remove object @since 22.0.0
+     * @throws \Exception when something goes wrong, message will be logged
+     * @since 7.0.0
+     */
+    protected function writeMultiPart($urn, $stream, string $mimetype = null) {     
+        $uploader = new MultipartUploader($this->getConnection(), $stream, [
+            'bucket'    => $this->bucket,
+            'key'       => $urn,
+            'part_size' => $this->uploadPartSize,
+            'params'    => [
+                'ContentType' => $mimetype
+            ] + $this->getSseKmsPutParameters(),
+        ]);
+
+        try {
+            $uploader->upload();
+        } catch (S3MultipartUploadException $e) {
+            // if anything goes wrong with multipart, make sure that you don´t poison and 
+            // slow down s3 bucket with orphaned fragments
+            $uploadInfo = $uploader->getState()->getId();
+            if ($uploader->getState()->isInitiated() && (array_key_exists('UploadId', $uploadInfo))) {
+                $this->getConnection()->abortMultipartUpload($uploadInfo);
+            }
+            throw $e;
+        }
+    }
+
+
+    /**
      * @param string $urn the unified resource name used to identify the object
      * @param resource $stream stream with the data to write
      * @param string|null $mimetype the mimetype to set for the remove object @since 22.0.0
@@ -96,72 +150,43 @@ trait S3ObjectTrait
      */
     public function writeObject($urn, $stream, string $mimetype = null)
     {
-        //$streamMeta = stream_get_meta_data($stream);
-        //if ($streamMeta['seekable']) {
-            // the ObjectUploader requires the stream seekable for objects <5MB 
-            // to copute checksum before uploading
-            //$stream = new CachingStream($stream);
-        //}
-        $count = 0;
-        $countStream = CallbackWrapper::wrap($stream, function ($read) use (&$count) {
-            $count += $read;
-        });
-
-        $s3params = [
-            'bucket' => $this->bucket,
-            'key' => $urn,
-            'part_size' => $this->uploadPartSize,
-            'params' => [
-                'ContentType' => $mimetype
-            ] + $this->getSseKmsPutParameters(),
-        ];
-
-        // ObjectUplader version
-        //$s3params = [
-        //    'part_size' => $this->uploadPartSize,
-        //    'params' => [
-        //        'ContentType' => $mimetype
-        //    ] + $this->getSseKmsPutParameters(),
-        //];
-
-        // maybe, we should also use ObjectUploader here in the future
-        // it does direct uploads for small files < 5MB and multipart otherwise
-        //$uploader = new ObjectUploader($this->getConnection(), $this->bucket, $urn, $countStream, 'private', $s3params);
-        $uploader = new MultipartUploader($this->getConnection(), $countStream, $s3params);
-
-        try {
-            $uploader->upload();
-        } catch (S3MultipartUploadException $e) {
-            // if anything goes wrong with multipart, make sure that you don´t poison and 
-            // slow down s3 bucket with fragment management
-            $uploadInfo = $uploader->getState()->getId();
-            if ($uploader->getState()->isInitiated() && (array_key_exists('UploadId', $uploadInfo))) {
-                $this->getConnection()->abortMultipartUpload($uploadInfo);
+        $psrStream = Psr7\stream_for($stream);
+        
+        if ($psrStream->isSeekable() && $psrStream->getSize() !== null) {
+            // streams with size information are used directly
+            $isSinglePart = ($psrStream->getSize() < MultipartUploader::PART_MIN_SIZE);
+            $loadStream = $psrStream;
+        } else {
+            // streams without size information are size checked by reading the first part
+            $buffer = Psr7\BufferSTream(MultipartUploader::PART_MIN_SIZE);
+            Psr7\copy_to_stream($psrStrean, $buffer, MultipartUploader::PART_MIN_SIZE);
+            if ($buffer->getSize() < MultipartUploader::PART_MIN_SIZE) {
+                // buffer is fully seekable, so use it directly for the small upload
+                $isSinglePart = true;
+                $buffer->seek(0);
+                $loadStream = $buffer;
+            } else {
+                $isSinglePart = false;
+                if ($psrStream->isSeekable() && $psrStream->getMetadata('uri') !== 'php://input') {
+                    // for large seekable streams, reset stream only
+                    $psrStream->seek(0);
+                    $loadStream = $psrStream;
+                } else {
+                    // for large non-seekable streams, re-combine buffer and remaining old stream
+                    $buffer->seek(0);
+                    $loadStream = new Psr7\AppendStream([$buffer, $psrStream]);        
+                }
             }
+        }
 
-            // This is an empty file so just touch it then
-            $s3params = [
-                'part_size' => $this->uploadPartSize,
-                'params' => [
-                    'ContentType' => $mimetype
-                ] + $this->getSseKmsPutParameters(),
-            ];
-			if ($count === 0 && feof($countStream)) {
-                $uploader = new ObjectUploader($this->getConnection(), $this->bucket, $urn, '', 'private', $s3params);
-				$uploader->upload();
-			} else {
-				throw $e;
-			}
-        } 
-        //finally {
-            // this handles [S3] fclose(): supplied resource is not a valid stream resource #23373
-            // see https://stackoverflow.com/questions/11247507/fclose-18-is-not-a-valid-stream-resource/11247555
-            // which also recommends the solution
-        //    if (is_resource($stream)) {
-        //        fclose($stream);
-        //    }
-        //}
+        // dispatch upload method according to size detection
+        if ($isSinglePart) {
+            $this->writeSingle($urn, $loadStream, $mimetype);
+        } else {
+            $this->writeMultiPart($urn, $loadStream, $mimetype);
+        }
     }
+
 
     /**
      * @param string $urn the unified resource name used to identify the object
