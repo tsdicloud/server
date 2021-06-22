@@ -157,7 +157,7 @@ trait S3ObjectTrait
         } else {
             // streams without size information are size checked by reading the first part
             $buffer = new Psr7\BufferStream(MultipartUploader::PART_MIN_SIZE);
-            Psr7\Utils::copy_to_stream($psrStrean, $buffer, MultipartUploader::PART_MIN_SIZE);
+            Psr7\Utils::copy_to_stream($psrStream, $buffer, MultipartUploader::PART_MIN_SIZE);
             if ($buffer->getSize() < MultipartUploader::PART_MIN_SIZE) {
                 // buffer is fully seekable, so use it directly for the small upload
                 $isSinglePart = true;
