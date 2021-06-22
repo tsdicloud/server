@@ -150,37 +150,16 @@ trait S3ObjectTrait
     {
         $psrStream = Psr7\stream_for($stream);
         
-        if ($psrStream->isSeekable() && $psrStream->getSize() !== null) {
-            // streams with size information are used directly
-            $isSinglePart = ($psrStream->getSize() < MultipartUploader::PART_MIN_SIZE);
-            $loadStream = $psrStream;
+        // ($psrStream->isSeekable() && $psrStream->getSize() !== null) evaluates to true for a On-Seekable stream
+        // so the optimisation does not apply
+        $buffer = new SeekableBufferStream();
+        Psr7\Utils::copyToStream($psrStream, $buffer, MultipartUploader::PART_MIN_SIZE);
+        $buffer->seek(0);
+        if ($buffer->getSize() < MultipartUploader::PART_MIN_SIZE) {
+            // buffer is fully seekable, so use it directly for the small upload
+            $this->writeSingle($urn, $buffer, $mimetype);
         } else {
-            // streams without size information are size checked by reading the first part
-            $buffer = new Psr7\BufferStream(MultipartUploader::PART_MIN_SIZE);
-            Psr7\Utils::copy_to_stream($psrStream, $buffer, MultipartUploader::PART_MIN_SIZE);
-            if ($buffer->getSize() < MultipartUploader::PART_MIN_SIZE) {
-                // buffer is fully seekable, so use it directly for the small upload
-                $isSinglePart = true;
-                $buffer->seek(0);
-                $loadStream = $buffer;
-            } else {
-                $isSinglePart = false;
-                if ($psrStream->isSeekable() && $psrStream->getMetadata('uri') !== 'php://input') {
-                    // for large seekable streams, reset stream only
-                    $psrStream->seek(0);
-                    $loadStream = $psrStream;
-                } else {
-                    // for large non-seekable streams, re-combine buffer and remaining old stream
-                    $buffer->seek(0);
-                    $loadStream = new Psr7\AppendStream([$buffer, $psrStream]);        
-                }
-            }
-        }
-
-        // dispatch upload method according to size detection
-        if ($isSinglePart) {
-            $this->writeSingle($urn, $loadStream, $mimetype);
-        } else {
+            $loadStream = new Psr7\AppendStream([$buffer, $psrStream]);        
             $this->writeMultiPart($urn, $loadStream, $mimetype);
         }
     }
