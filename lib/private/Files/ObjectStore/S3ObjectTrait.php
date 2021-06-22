@@ -102,10 +102,8 @@ trait S3ObjectTrait
             'Key'    => $urn,
             'Body'   => $stream,
             'ACL'    => 'private',
-            'params' => [
-                'ContentType' => $mimetype
-            ] + $this->getSseKmsPutParameters(), 
-        ]);
+            'ContentType' => $mimetype, 
+        ] + $this->getSseKmsPutParameters());
     }
 
 
@@ -158,8 +156,8 @@ trait S3ObjectTrait
             $loadStream = $psrStream;
         } else {
             // streams without size information are size checked by reading the first part
-            $buffer = Psr7\BufferSTream(MultipartUploader::PART_MIN_SIZE);
-            Psr7\copy_to_stream($psrStrean, $buffer, MultipartUploader::PART_MIN_SIZE);
+            $buffer = new Psr7\BufferStream(MultipartUploader::PART_MIN_SIZE);
+            Psr7\Utils::copy_to_stream($psrStrean, $buffer, MultipartUploader::PART_MIN_SIZE);
             if ($buffer->getSize() < MultipartUploader::PART_MIN_SIZE) {
                 // buffer is fully seekable, so use it directly for the small upload
                 $isSinglePart = true;
