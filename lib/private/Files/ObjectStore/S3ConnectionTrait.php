@@ -107,7 +107,8 @@ trait S3ConnectionTrait {
 	public function getSseKmsPutParameters(): array {
 		if ($this->sseUseBucketKey) {
 			return [
-				//'ServerSideEncryption' => 'aws:kms',
+				// this does not work properly on OpenTelekomCloud yet
+				// 'ServerSideEncryption' => 'aws:kms',
 				'BucketKeyEnabled' => true,
 			];
 		} elseif (!empty($this->sseKmsKeyId)) {
@@ -245,7 +246,7 @@ trait S3ConnectionTrait {
 			'use_path_style_endpoint' => isset($this->params['use_path_style']) ? $this->params['use_path_style'] : false,
 			'signature_provider' => \Aws\or_chain([self::class, 'legacySignatureProvider'], ClientResolver::_default_signature_provider()),
 			'csm' => false,
-			//'debug'   => true, // to debug S3 communication
+			'debug'   => true, // to debug S3 communication
 		];
 		if (isset($this->params['proxy'])) {
 			$options['request.options'] = ['proxy' => $this->params['proxy']];
